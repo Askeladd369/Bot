@@ -48,7 +48,8 @@ async def show_main_button_menu(client, message):
         [InlineKeyboardButton("Tipster Nacionales 🇲🇽", callback_data="main_Button1_select")],
         [InlineKeyboardButton("Tipsters Americanos 🇺🇸", callback_data="main_Button2_select")],
         [InlineKeyboardButton("Tipsters Europeos 🇪🇺", callback_data="main_Button3_select")],
-        [InlineKeyboardButton("Grupo Alta Efectividad 📊", callback_data="main_Button4_select")]
+        [InlineKeyboardButton("Grupo Alta Efectividad 📊", callback_data="main_Button4_select")],
+        [InlineKeyboardButton("Revisar Usuarios 👥", callback_data="review_users")]  # Nuevo botón
     ]
     await message.reply("Selecciona un Grupo de tipsters:", reply_markup=InlineKeyboardMarkup(buttons))
 
@@ -78,7 +79,10 @@ async def start(client, message):
     await client.send_message(
         config.admin_id,
         f"El usuario {user_name} ({user_id}) quiere suscribirse. Aprobar?",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Aprobar", callback_data=f"approve_{user_id}")]])
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("Aprobar", callback_data=f"approve_{user_id}")],
+            [InlineKeyboardButton("Rechazar", callback_data=f"reject_{user_id}")]
+        ])
     )
 
 # Manejar el botón de "Inicio"
@@ -86,25 +90,23 @@ async def start(client, message):
 async def handle_inicio(client, callback_query):
     await callback_query.answer("¡Bienvenido! Por favor espera la confirmación del administrador.")
 
-
 # Manejar la aprobación del administrador
 @app.on_callback_query(filters.regex(r"approve_"))
 async def approve_user(client, callback_query):
     user_id = int(callback_query.data.split("_")[1])
     user = await client.get_users(user_id)
-    user_preferences[user_id] = {
-        "approved": True,
-        "categories": {},
-        "approved_time": datetime.datetime.now()  # Guardar el tiempo de aprobación
-    }
-    await client.send_message(user_id, "¡Felicidades! Has sido aprobado. Usa el comando /categories para seleccionar los tipsters que deseas recibir.")
+    await client.send_message(user_id, "¡Felicidades! Has sido aprobado. Por favor, espera mientras configuramos tu suscripción.")
+    await client.send_message(callback_query.from_user.id, f"Introduce el número de días de suscripción para {user.first_name}:")
+    set_user_state(callback_query.from_user.id, f"awaiting_days_{user_id}")
     await callback_query.answer(f"Usuario {user.first_name} aprobado.")
-    
-    # Iniciar temporizador para eliminar usuario después de 30 días
-    asyncio.create_task(remove_user_after_time(client, user_id, 30 * 24 * 60 * 60))  # 30 días en segundos
-    
-    # Notificar al usuario sobre el tiempo restante de su membresía
-    asyncio.create_task(calculate_time_left(client, user_id, 30 * 24 * 60 * 60))  # 30 días en segundos
+
+# Nueva función para manejar el rechazo del administrador
+@app.on_callback_query(filters.regex(r"reject_"))
+async def reject_user(client, callback_query):
+    user_id = int(callback_query.data.split("_")[1])
+    user = await client.get_users(user_id)
+    await client.send_message(user_id, "Lo sentimos, tu solicitud de suscripción ha sido rechazada.")
+    await callback_query.answer(f"Usuario {user.first_name} rechazado.")
 
 # Nueva función para calcular y notificar el tiempo restante de la membresía
 async def calculate_time_left(client, user_id, total_time):
@@ -188,6 +190,7 @@ async def configure_semaphore(client, callback_query):
         await show_config_menu(client, callback_query.message)
         return
     buttons = [[InlineKeyboardButton(category, callback_data=f"set_semaphore_{category}_{main_button}")] for category in categories_list]
+    buttons.append([InlineKeyboardButton("🔙 Volver", callback_data="show_config_menu")])
     await send_buttons(client, callback_query, "Selecciona un tipster para configurar su efectividad:", buttons)
 
 @app.on_callback_query(filters.regex(r"set_semaphore_(.+)_(Button[1-4])") & filters.user(config.admin_id))
@@ -197,7 +200,8 @@ async def handle_set_semaphore(client, callback_query):
     buttons = [
         [InlineKeyboardButton("🔴", callback_data=f"semaphore_{category}_{main_button}_🔴")],
         [InlineKeyboardButton("🟡", callback_data=f"semaphore_{category}_{main_button}_🟡")],
-        [InlineKeyboardButton("🟢", callback_data=f"semaphore_{category}_{main_button}_🟢")]
+        [InlineKeyboardButton("🟢", callback_data=f"semaphore_{category}_{main_button}_🟢")],
+        [InlineKeyboardButton("🔙 Volver", callback_data=f"configure_semaphore_{main_button}")]
     ]
     await send_buttons(client, callback_query, f"Selecciona la efectividad para '{category}':", buttons)
 
@@ -213,8 +217,7 @@ async def set_semaphore(client, callback_query):
         categories["Button4"][category] = categories[main_button][category]
     
     await callback_query.message.reply(f"efectividad '{semaphore}' asignada al tipster '{category}' en '{main_button}'.")
-    await show_config_menu(client, callback_query.message)
-    await callback_query.answer()
+    await configure_semaphore(client, callback_query)
 
 @app.on_callback_query(filters.regex(r"configure_stars") & filters.user(config.admin_id))
 async def configure_stars(client, callback_query):
@@ -225,6 +228,7 @@ async def configure_stars(client, callback_query):
         await show_config_menu(client, callback_query.message)
         return
     buttons = [[InlineKeyboardButton(category, callback_data=f"set_stars_{category}_{main_button}")] for category in categories_list]
+    buttons.append([InlineKeyboardButton("🔙 Volver", callback_data="show_config_menu")])
     await send_buttons(client, callback_query, "Selecciona un tipster para configurar su racha:", buttons)
 
 @app.on_callback_query(filters.regex(r"set_stars_(.+)_(Button[1-4])") & filters.user(config.admin_id))
@@ -232,6 +236,7 @@ async def handle_set_stars(client, callback_query):
     category = callback_query.data.split("_")[2]
     main_button = callback_query.data.split("_")[3]
     buttons = [[InlineKeyboardButton(f"{i} 🎖", callback_data=f"stars_{category}_{main_button}_{i}") for i in range(1, 6)]]
+    buttons.append([InlineKeyboardButton("🔙 Volver", callback_data=f"configure_stars_{main_button}")])
     await send_buttons(client, callback_query, f"Selecciona los dias de racha para '{category}':", buttons)
 
 @app.on_callback_query(filters.regex(r"stars_(.+)_(Button[1-4])_(\d)") & filters.user(config.admin_id))
@@ -241,8 +246,7 @@ async def set_stars(client, callback_query):
     stars = int(callback_query.data.split("_")[3])
     categories[main_button][category]['stars'] = stars
     await callback_query.message.reply(f"{stars} Racha asignada al tipster '{category}' en '{main_button}'.")
-    await show_config_menu(client, callback_query.message)
-    await callback_query.answer()
+    await configure_stars(client, callback_query)
 
 @app.on_message(filters.text & filters.user(config.admin_id))
 async def handle_text_messages(client, message):
@@ -258,6 +262,28 @@ async def handle_text_messages(client, message):
             await message.reply(f"Tipster '{category_name}' añadido al Grupo '{main_button}'.")
         set_user_state(user_id, f"selected_{main_button}")
         await show_config_menu(client, message)
+    elif user_state and user_state.startswith("awaiting_days_"):
+        try:
+            days = int(message.text.strip())
+            target_user_id = int(user_state.split("_")[2])
+            user_preferences[target_user_id] = {
+                "approved": True,
+                "categories": {},
+                "approved_time": datetime.datetime.now(),
+                "subscription_days": days
+            }
+            await client.send_message(target_user_id, f"Tu suscripción ha sido configurada por {days} días. Usa el comando /categories para seleccionar los tipsters que deseas recibir.")
+            await message.reply(f"Suscripción de {days} días configurada para el usuario {target_user_id}.")
+            
+            # Iniciar temporizador para eliminar usuario después del número de días especificado
+            asyncio.create_task(remove_user_after_time(client, target_user_id, days * 24 * 60 * 60))
+            
+            # Notificar al usuario sobre el tiempo restante de su membresía
+            asyncio.create_task(calculate_time_left(client, target_user_id, days * 24 * 60 * 60))
+        except ValueError:
+            await message.reply("Por favor, introduce un número válido de días.")
+        finally:
+            set_user_state(user_id, None)
 
 # Verificar aprobación antes de acceder a opciones de usuario
 @app.on_message(filters.command("categories") & filters.private)
@@ -278,7 +304,7 @@ async def show_categories(client, callback_query):
     categories_list = categories.get(main_button, {})
     
     # Filtrar los tipsters con semáforo verde si se selecciona el botón "Grupo Alta Efectividad"
-    if main_button == "Button4":
+    if (main_button == "Button4"):
         categories_list = {k: v for k, v in categories_list.items() if v.get('semaphore') == '🟢'}
     
     if not categories_list:
@@ -392,6 +418,19 @@ def add_watermark(input_image_path, watermark_image_path, semaphore, stars):
 
     return output
 
+@app.on_callback_query(filters.regex(r"review_users") & filters.user(config.admin_id))  # Nueva función para manejar el botón "Revisar Usuarios"
+async def review_users(client, callback_query):
+    if not user_preferences:
+        await callback_query.message.reply("No hay usuarios suscritos.")
+        return
+    for user_id in user_preferences:
+        user = await client.get_users(user_id)
+        subscription_days = user_preferences[user_id].get("subscription_days", 0)
+        approved_time = user_preferences[user_id].get("approved_time")
+        days_left = (approved_time + datetime.timedelta(days=subscription_days) - datetime.datetime.now()).days
+        await callback_query.message.reply(f"Usuario: {user.first_name}\nDías restantes: {days_left} días")
+    await callback_query.answer()
+
 @app.on_message(filters.command("list_users") & filters.user(config.admin_id))
 async def list_users(client, message):
     if not user_preferences:
@@ -400,7 +439,10 @@ async def list_users(client, message):
     buttons = []
     for user_id in user_preferences:
         user = await client.get_users(user_id)
-        buttons.append([InlineKeyboardButton(user.first_name, callback_data=f"remove_{user_id}")])
+        subscription_days = user_preferences[user_id].get("subscription_days", 0)
+        approved_time = user_preferences[user_id].get("approved_time")
+        days_left = (approved_time + datetime.timedelta(days=subscription_days) - datetime.datetime.now()).days
+        buttons.append([InlineKeyboardButton(f"{user.first_name} - {days_left} días restantes", callback_data=f"remove_{user_id}")])
     await message.reply("Usuarios suscritos:", reply_markup=InlineKeyboardMarkup(buttons))
 
 @app.on_callback_query(filters.regex(r"remove_") & filters.user(config.admin_id))
@@ -413,5 +455,10 @@ async def remove_user(client, callback_query):
         await client.send_message(user_id, "Tu subscripcion termino. Has sido eliminado de la lista de suscriptores por el administrador.")
     else:
         await callback_query.answer("Usuario no encontrado.")
+
+@app.on_callback_query(filters.regex(r"show_config_menu") & filters.user(config.admin_id))
+async def return_to_config_menu(client, callback_query):
+    await show_config_menu(client, callback_query.message)
+    await callback_query.answer()
 
 app.run()
