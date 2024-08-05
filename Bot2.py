@@ -48,9 +48,13 @@ def add_user(user_id, first_name, approved, subscription_days, approved_time):
                    (user_id, first_name, approved, subscription_days, approved_time))
     conn.commit()
 
-def get_user(user_id):
-    cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
-    return cursor.fetchone()
+def get_user(user_id=None):
+    if user_id:
+        cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+        return cursor.fetchall()
+    else:
+        cursor.execute("SELECT * FROM users")
+        return cursor.fetchall()
 
 def update_user_approval(user_id, approved):
     cursor.execute("UPDATE users SET approved = ? WHERE user_id = ?", (approved, user_id))
@@ -113,9 +117,10 @@ async def show_main_button_menu(client, message):
         [InlineKeyboardButton("Tipster Nacionales 🇲🇽", callback_data="main_Button1_select")],
         [InlineKeyboardButton("Tipsters Americanos 🇺🇸", callback_data="main_Button2_select")],
         [InlineKeyboardButton("Tipsters Europeos 🇪🇺", callback_data="main_Button3_select")],
-        [InlineKeyboardButton("Grupo Alta Efectividad 📊", callback_data="main_Button4_select")],
-        [InlineKeyboardButton("Revisar Usuarios 👥", callback_data="review_users")]
+        [InlineKeyboardButton("Grupo Alta Efectividad 📊", callback_data="main_Button4_select")]
     ]
+    if is_admin(message.from_user.id):  # Solo muestra este botón si el usuario es administrador
+        buttons.append([InlineKeyboardButton("Revisar Usuarios 👥", callback_data="review_users")])
     await message.reply("Selecciona un Grupo de tipsters:", reply_markup=InlineKeyboardMarkup(buttons))
 
 async def show_config_menu(client, message):
@@ -200,7 +205,7 @@ async def remove_user_after_time(client, user_id, delay):
 # Verificar si el usuario está aprobado
 def is_user_approved(user_id):
     user = get_user(user_id)
-    return user and user[2] == 1
+    return user and user[0][2] == 1
 
 # Menú de administración
 @app.on_message(filters.command("admin") & filters.create(lambda _, __, m: is_admin(m.from_user.id)))
@@ -411,10 +416,14 @@ async def toggle_category(client, callback_query):
 
 @app.on_message(filters.photo & filters.create(lambda _, __, m: is_admin(m.from_user.id)))
 async def handle_image(client, message):
+    user_id = message.from_user.id  # Obtén el user_id del mensaje recibido
+
     if not message.caption:
         await message.reply("Por favor, añade el nombre del tipster a la imagen.")
         return
     category = message.caption.strip()
+    
+    # Verificar si la categoría es válida
     if category not in [cat[1] for cat in get_categories("Button1")] + [cat[1] for cat in get_categories("Button2")] + [cat[1] for cat in get_categories("Button3")] + [cat[1] for cat in get_categories("Button4")]:
         await message.reply("Categoría no válida.")
         return
@@ -436,9 +445,11 @@ async def handle_image(client, message):
     
     watermarked_image = add_watermark(photo, "C:\\Users\\saidd\\OneDrive\\Escritorio\\Bot telegram\\watermark.png", semaphore, stars)
     
-    for user in get_user(user_id):
+    user_categories = {cat[1]: True for cat in get_categories(main_button)}  # Definir user_categories
+    
+    for user in get_user():
         if user[2] and user_categories.get(category):
-            await client.send_photo(user[0], watermarked_image, caption=f"Categoría: {category} {semaphore} {'🎖' * stars}")
+            await client.send_photo(user[0], watermarked_image, caption=f"Tipster: {category} {semaphore} {'🎖' * stars}")
     
     os.remove(photo)
 
@@ -476,11 +487,15 @@ async def review_users(client, callback_query):
     if not users:
         await callback_query.message.reply("No hay usuarios suscritos.")
         return
+    
+    buttons = []
     for user in users:
         subscription_days = user[3]
         approved_time = datetime.datetime.fromisoformat(user[4])
         days_left = (approved_time + datetime.timedelta(days=subscription_days) - datetime.datetime.now()).days
-        await callback_query.message.reply(f"Usuario: {user[1]}\nDías restantes: {days_left} días")
+        buttons.append([InlineKeyboardButton(f"{user[1]} - {days_left} días restantes", callback_data=f"remove_{user[0]}")])
+    
+    await callback_query.message.reply("Usuarios suscritos:", reply_markup=InlineKeyboardMarkup(buttons))
     await callback_query.answer()
 
 @app.on_message(filters.command("list_users") & filters.create(lambda _, __, m: is_main_admin(m.from_user.id)))
@@ -505,8 +520,9 @@ async def remove_user(client, callback_query):
     if user:
         cursor.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
         conn.commit()
-        await callback_query.answer(f"Usuario {user[1]} eliminado.")
+        await callback_query.answer(f"Usuario {user[0][1]} eliminado.")
         await client.send_message(user_id, "Tu subscripción terminó. Has sido eliminado de la lista de suscriptores por el administrador.")
+        await review_users(client, callback_query)  # Refresca la lista de usuarios después de eliminar uno
     else:
         await callback_query.answer("Usuario no encontrado.")
 
