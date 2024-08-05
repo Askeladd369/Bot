@@ -37,6 +37,14 @@ def init_db():
             main_button TEXT
         )
     ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_categories (
+            user_id INTEGER,
+            category_name TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(user_id),
+            FOREIGN KEY (category_name) REFERENCES categories(name)
+        )
+    ''')
     conn.commit()
     return conn, cursor
 
@@ -63,6 +71,18 @@ def update_user_approval(user_id, approved):
 def update_user_subscription(user_id, subscription_days, approved_time):
     cursor.execute("UPDATE users SET subscription_days = ?, approved_time = ? WHERE user_id = ?", (subscription_days, approved_time, user_id))
     conn.commit()
+
+def add_user_category(user_id, category_name):
+    cursor.execute("INSERT INTO user_categories (user_id, category_name) VALUES (?, ?)", (user_id, category_name))
+    conn.commit()
+
+def remove_user_category(user_id, category_name):
+    cursor.execute("DELETE FROM user_categories WHERE user_id = ? AND category_name = ?", (user_id, category_name))
+    conn.commit()
+
+def get_user_categories(user_id):
+    cursor.execute("SELECT category_name FROM user_categories WHERE user_id = ?", (user_id,))
+    return [row[0] for row in cursor.fetchall()]
 
 # Funciones para manejar tipsters
 def add_category(name, semaphore, stars, main_button):
@@ -132,6 +152,16 @@ async def show_config_menu(client, message):
         [InlineKeyboardButton("🔙 Seleccionar Otro Grupo", callback_data="select_main_button")]
     ]
     await message.reply("Aquí puedes configurar los tipsters:", reply_markup=InlineKeyboardMarkup(buttons))
+
+button_names = {
+    "Button1": "Tipster Nacionales 🇲🇽",
+    "Button2": "Tipsters Americanos 🇺🇸",
+    "Button3": "Tipsters Europeos 🇪🇺",
+    "Button4": "Grupo Alta Efectividad 📊"
+}
+
+def get_button_name(button_key):
+    return button_names.get(button_key, button_key)
 
 # Manejar el comando /start
 @app.on_message(filters.command("start") & filters.private)
@@ -240,7 +270,7 @@ async def remove_category(client, callback_query):
         await callback_query.message.reply("No hay tipsters para quitar.")
         await show_config_menu(client, callback_query.message)
         return
-    buttons = [[InlineKeyboardButton(category[1], callback_data=f"remove_{category[1]}_{main_button}")] for category in categories_list]
+    buttons = [[InlineKeyboardButton(f"{category[1]} {category[2]} {'🎖' * category[3]}", callback_data=f"remove_{category[1]}_{main_button}")] for category in categories_list]
     await send_buttons(client, callback_query, "Selecciona un tipster para quitar:", buttons)
 
 @app.on_callback_query(filters.regex(r"remove_(.+)_(Button[1-4])") & filters.create(lambda _, __, m: is_admin(m.from_user.id)))
@@ -248,7 +278,7 @@ async def handle_remove_category(client, callback_query):
     category = callback_query.data.split("_")[1]
     main_button = callback_query.data.split("_")[2]
     delete_category(category)
-    await callback_query.message.reply(f"Tipster '{category}' eliminado de '{main_button}'.")
+    await callback_query.message.reply(f"Tipster '{category}' eliminado de '{get_button_name(main_button)}'.")
     await show_config_menu(client, callback_query.message)
     await callback_query.answer()
 
@@ -260,7 +290,7 @@ async def configure_semaphore(client, callback_query):
         await callback_query.message.reply("No hay tipsters para configurar.")
         await show_config_menu(client, callback_query.message)
         return
-    buttons = [[InlineKeyboardButton(category[1], callback_data=f"set_semaphore_{category[1]}_{main_button}")] for category in categories_list]
+    buttons = [[InlineKeyboardButton(f"{category[1]} {category[2]} {'🎖' * category[3]}", callback_data=f"set_semaphore_{category[1]}_{main_button}")] for category in categories_list]
     buttons.append([InlineKeyboardButton("🔙 Volver", callback_data="show_config_menu")])
     await send_buttons(client, callback_query, "Selecciona un tipster para configurar su efectividad:", buttons)
 
@@ -286,7 +316,7 @@ async def set_semaphore(client, callback_query):
     if semaphore == '🟢' and main_button != "Button4":
         add_category(category, semaphore, 0, "Button4")
     
-    await callback_query.message.reply(f"Efectividad '{semaphore}' asignada al tipster '{category}' en '{main_button}'.")
+    await callback_query.message.reply(f"Efectividad '{semaphore}' asignada al tipster '{category}' en '{get_button_name(main_button)}'.")
     await configure_semaphore(client, callback_query)
 
 @app.on_callback_query(filters.regex(r"configure_stars") & filters.create(lambda _, __, m: is_admin(m.from_user.id)))
@@ -297,7 +327,7 @@ async def configure_stars(client, callback_query):
         await callback_query.message.reply("No hay tipsters para configurar.")
         await show_config_menu(client, callback_query.message)
         return
-    buttons = [[InlineKeyboardButton(category[1], callback_data=f"set_stars_{category[1]}_{main_button}")] for category in categories_list]
+    buttons = [[InlineKeyboardButton(f"{category[1]} {category[2]} {'🎖' * category[3]}", callback_data=f"set_stars_{category[1]}_{main_button}")] for category in categories_list]
     buttons.append([InlineKeyboardButton("🔙 Volver", callback_data="show_config_menu")])
     await send_buttons(client, callback_query, "Selecciona un tipster para configurar su racha:", buttons)
 
@@ -315,7 +345,7 @@ async def set_stars(client, callback_query):
     main_button = callback_query.data.split("_")[2]
     stars = int(callback_query.data.split("_")[3])
     update_category_stars(category, stars)
-    await callback_query.message.reply(f"{stars} Racha asignada al tipster '{category}' en '{main_button}'.")
+    await callback_query.message.reply(f"{stars} Racha asignada al tipster '{category}' en '{get_button_name(main_button)}'.")
     await configure_stars(client, callback_query)
 
 @app.on_message(filters.text & filters.create(lambda _, __, m: is_admin(m.from_user.id)))
@@ -329,7 +359,7 @@ async def handle_text_messages(client, message):
             await message.reply("Esta tipster ya existe.")
         else:
             add_category(category_name, "⚪", 0, main_button)
-            await message.reply(f"Tipster '{category_name}' añadido al Grupo '{main_button}'.")
+            await message.reply(f"Tipster '{category_name}' añadido al Grupo '{get_button_name(main_button)}'.")
         set_user_state(user_id, f"selected_{main_button}")
         await show_config_menu(client, message)
     elif user_state and user_state.startswith("awaiting_days_"):
@@ -372,8 +402,7 @@ async def show_categories(client, callback_query):
         await callback_query.message.reply("No hay tipsters disponibles en este grupo.")
         return
     
-    user = get_user(user_id)
-    user_categories = {cat[1]: False for cat in categories_list}
+    user_categories = get_user_categories(user_id)
     buttons = []
     for category in categories_list:
         name = category[1]
@@ -381,11 +410,11 @@ async def show_categories(client, callback_query):
         stars = '🎖' * category[3]
         buttons.append([
             InlineKeyboardButton(
-                f"{'✅' if user_categories.get(name) else '❌'} {name} {semaphore} {stars}",
+                f"{'✅' if name in user_categories else '❌'} {name} {semaphore} {stars}",
                 callback_data=f"toggle_{name}_{main_button}_{user_id}"
             )
         ])
-    await send_buttons(client, callback_query, f"Tipsters en {main_button}:", buttons)
+    await send_buttons(client, callback_query, f"Tipsters en {get_button_name(main_button)}:", buttons)
 
 @app.on_callback_query(filters.regex(r"toggle_(.+)_(Button[1-4])_(\d+)"))
 async def toggle_category(client, callback_query):
@@ -397,10 +426,17 @@ async def toggle_category(client, callback_query):
     category = data[1]
     main_button = data[2]
     user_id = int(data[3])
-    user = get_user(user_id)
-    user_categories = {cat[1]: False for cat in get_categories(main_button)}
-    user_categories[category] = not user_categories.get(category, False)
-    await callback_query.answer(f"{category} {'activada' if user_categories[category] else 'desactivada'}.")
+    user_categories = get_user_categories(user_id)
+    
+    if category in user_categories:
+        remove_user_category(user_id, category)
+        user_categories.remove(category)
+        await callback_query.answer(f"{category} desactivada.")
+    else:
+        add_user_category(user_id, category)
+        user_categories.append(category)
+        await callback_query.answer(f"{category} activada.")
+    
     buttons = []
     for cat in get_categories(main_button):
         name = cat[1]
@@ -408,7 +444,7 @@ async def toggle_category(client, callback_query):
         stars = '🎖' * cat[3]
         buttons.append([
             InlineKeyboardButton(
-                f"{'✅' if user_categories.get(name) else '❌'} {name} {semaphore} {stars}",
+                f"{'✅' if name in user_categories else '❌'} {name} {semaphore} {stars}",
                 callback_data=f"toggle_{name}_{main_button}_{user_id}"
             )
         ])
