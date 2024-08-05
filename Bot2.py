@@ -149,7 +149,7 @@ async def show_config_menu(client, message):
         [InlineKeyboardButton("➖ Quitar Tipster", callback_data="remove_category")],
         [InlineKeyboardButton("📊 Configurar Efectividad", callback_data="configure_semaphore")],
         [InlineKeyboardButton("⭐ Configurar Racha", callback_data="configure_stars")],
-        [InlineKeyboardButton("🔙 Seleccionar Otro Grupo", callback_data="select_main_button")]
+        [InlineKeyboardButton("🔙 Volver", callback_data="select_main_button")]
     ]
     await message.reply("Aquí puedes configurar los tipsters:", reply_markup=InlineKeyboardMarkup(buttons))
 
@@ -259,7 +259,7 @@ async def select_main_button(client, callback_query):
 async def add_category_callback(client, callback_query):
     main_button = get_user_state(callback_query.from_user.id).split("_")[1]
     await callback_query.message.reply("Envía el nombre del nuevo tipster.")
-    set_user_state(callback_query.from_user.id, f"adding_category_{main_button}")
+    set_user_state(callback_query.from_user.id, f"adding_category_" + main_button)
     await callback_query.answer()
 
 @app.on_callback_query(filters.regex(r"remove_category") & filters.create(lambda _, __, m: is_admin(m.from_user.id)))
@@ -271,6 +271,7 @@ async def remove_category(client, callback_query):
         await show_config_menu(client, callback_query.message)
         return
     buttons = [[InlineKeyboardButton(f"{category[1]} {category[2]} {'🎖' * category[3]}", callback_data=f"remove_{category[1]}_{main_button}")] for category in categories_list]
+    buttons.append([InlineKeyboardButton("🔙 Volver", callback_data="show_config_menu")])
     await send_buttons(client, callback_query, "Selecciona un tipster para quitar:", buttons)
 
 @app.on_callback_query(filters.regex(r"remove_(.+)_(Button[1-4])") & filters.create(lambda _, __, m: is_admin(m.from_user.id)))
@@ -414,6 +415,7 @@ async def show_categories(client, callback_query):
                 callback_data=f"toggle_{name}_{main_button}_{user_id}"
             )
         ])
+    buttons.append([InlineKeyboardButton("🔙 Volver", callback_data="select_main_button")])
     await send_buttons(client, callback_query, f"Tipsters en {get_button_name(main_button)}:", buttons)
 
 @app.on_callback_query(filters.regex(r"toggle_(.+)_(Button[1-4])_(\d+)"))
@@ -448,6 +450,7 @@ async def toggle_category(client, callback_query):
                 callback_data=f"toggle_{name}_{main_button}_{user_id}"
             )
         ])
+    buttons.append([InlineKeyboardButton("🔙 Volver", callback_data="select_main_button")])
     await callback_query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
 
 @app.on_message(filters.photo & filters.create(lambda _, __, m: is_admin(m.from_user.id)))
@@ -479,7 +482,7 @@ async def handle_image(client, message):
 
     photo = await client.download_media(message.photo.file_id)
     
-    watermarked_image = add_watermark(photo, "C:\\Users\\Administrator\\Bot\\watermark.png", semaphore, stars)
+    watermarked_image = add_watermark(photo,  "C:\\Users\\Administrator\\Bot\\watermark.png", semaphore, stars)
     
     user_categories = {cat[1]: True for cat in get_categories(main_button)}  # Definir user_categories
     
@@ -530,6 +533,7 @@ async def review_users(client, callback_query):
         approved_time = datetime.datetime.fromisoformat(user[4])
         days_left = (approved_time + datetime.timedelta(days=subscription_days) - datetime.datetime.now()).days
         buttons.append([InlineKeyboardButton(f"{user[1]} - {days_left} días restantes", callback_data=f"remove_{user[0]}")])
+    buttons.append([InlineKeyboardButton("🔙 Volver", callback_data="admin_menu")])
     
     await callback_query.message.reply("Usuarios suscritos:", reply_markup=InlineKeyboardMarkup(buttons))
     await callback_query.answer()
@@ -547,6 +551,8 @@ async def list_users(client, message):
         approved_time = datetime.datetime.fromisoformat(user[4])
         days_left = (approved_time + datetime.timedelta(days=subscription_days) - datetime.datetime.now()).days
         buttons.append([InlineKeyboardButton(f"{user[1]} - {days_left} días restantes", callback_data=f"remove_{user[0]}")])
+    buttons.append([InlineKeyboardButton("🔙 Volver", callback_data="admin_menu")])
+    
     await message.reply("Usuarios suscritos:", reply_markup=InlineKeyboardMarkup(buttons))
 
 @app.on_callback_query(filters.regex(r"remove_") & filters.create(lambda _, __, m: is_main_admin(m.from_user.id)))
@@ -565,6 +571,11 @@ async def remove_user(client, callback_query):
 @app.on_callback_query(filters.regex(r"show_config_menu") & filters.create(lambda _, __, m: is_admin(m.from_user.id)))
 async def return_to_config_menu(client, callback_query):
     await show_config_menu(client, callback_query.message)
+    await callback_query.answer()
+
+@app.on_callback_query(filters.regex(r"admin_menu") & filters.create(lambda _, __, m: is_main_admin(m.from_user.id)))
+async def return_to_admin_menu(client, callback_query):
+    await admin_menu(client, callback_query.message)
     await callback_query.answer()
 
 app.run()
