@@ -425,7 +425,7 @@ async def handle_image(client, message):
     
     # Verificar si la categoría es válida
     if category not in [cat[1] for cat in get_categories("Button1")] + [cat[1] for cat in get_categories("Button2")] + [cat[1] for cat in get_categories("Button3")] + [cat[1] for cat in get_categories("Button4")]:
-        await message.reply("Categoría no válida.")
+        await message.reply("Tipster no encontrado.")
         return
 
     main_button = None
@@ -521,7 +521,7 @@ async def remove_user(client, callback_query):
         cursor.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
         conn.commit()
         await callback_query.answer(f"Usuario {user[0][1]} eliminado.")
-        await client.send_message(user_id, "Tu subscripción terminó. Has sido eliminado de la lista de suscriptores por el administrador.")
+        await client.send_message(user_id, "Tu membresia premium terminó. Has sido eliminado de la lista de suscriptores por el administrador.")
         await review_users(client, callback_query)  # Refresca la lista de usuarios después de eliminar uno
     else:
         await callback_query.answer("Usuario no encontrado.")
