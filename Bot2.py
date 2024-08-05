@@ -479,7 +479,7 @@ async def handle_image(client, message):
 
     photo = await client.download_media(message.photo.file_id)
     
-    watermarked_image = add_watermark(photo, "C:\\Users\\Administrador\\Bot\\watermark.png", semaphore, stars)
+    watermarked_image = add_watermark(photo, "C:\\Users\\Administrator\\Bot\\watermark.png", semaphore, stars)
     
     user_categories = {cat[1]: True for cat in get_categories(main_button)}  # Definir user_categories
     
