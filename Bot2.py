@@ -415,7 +415,7 @@ async def show_categories(client, callback_query):
                 callback_data=f"toggle_{name}_{main_button}_{user_id}"
             )
         ])
-    buttons.append([InlineKeyboardButton("🔙 Volver", callback_data="select_main_button")])
+    buttons.append([InlineKeyboardButton("🔙 Volver", callback_data="select_main_button_user")])
     await send_buttons(client, callback_query, f"Tipsters en {get_button_name(main_button)}:", buttons)
 
 @app.on_callback_query(filters.regex(r"toggle_(.+)_(Button[1-4])_(\d+)"))
@@ -450,7 +450,7 @@ async def toggle_category(client, callback_query):
                 callback_data=f"toggle_{name}_{main_button}_{user_id}"
             )
         ])
-    buttons.append([InlineKeyboardButton("🔙 Volver", callback_data="select_main_button")])
+    buttons.append([InlineKeyboardButton("🔙 Volver", callback_data="select_main_button_user")])
     await callback_query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
 
 @app.on_message(filters.photo & filters.create(lambda _, __, m: is_admin(m.from_user.id)))
@@ -482,7 +482,7 @@ async def handle_image(client, message):
 
     photo = await client.download_media(message.photo.file_id)
     
-    watermarked_image = add_watermark(photo,  "C:\\Users\\Administrator\\Bot\\watermark.png", semaphore, stars)
+    watermarked_image = add_watermark(photo, "C:\\Users\\Administrator\\Bot\\watermark.png", semaphore, stars)
     
     user_categories = {cat[1]: True for cat in get_categories(main_button)}  # Definir user_categories
     
@@ -576,6 +576,11 @@ async def return_to_config_menu(client, callback_query):
 @app.on_callback_query(filters.regex(r"admin_menu") & filters.create(lambda _, __, m: is_main_admin(m.from_user.id)))
 async def return_to_admin_menu(client, callback_query):
     await admin_menu(client, callback_query.message)
+    await callback_query.answer()
+
+@app.on_callback_query(filters.regex(r"select_main_button_user") & filters.private)
+async def return_to_main_button_menu(client, callback_query):
+    await show_main_button_menu(client, callback_query.message)
     await callback_query.answer()
 
 app.run()
