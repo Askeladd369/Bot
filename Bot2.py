@@ -453,6 +453,11 @@ async def toggle_category(client, callback_query):
     buttons.append([InlineKeyboardButton("🔙 Volver", callback_data="select_main_button_user")])
     await callback_query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
 
+@app.on_callback_query(filters.regex(r"select_main_button_user"))
+async def return_to_main_button_menu(client, callback_query):
+    await show_main_button_menu(client, callback_query.message)
+    await callback_query.answer()
+
 @app.on_message(filters.photo & filters.create(lambda _, __, m: is_admin(m.from_user.id)))
 async def handle_image(client, message):
     user_id = message.from_user.id  # Obtén el user_id del mensaje recibido
@@ -576,11 +581,6 @@ async def return_to_config_menu(client, callback_query):
 @app.on_callback_query(filters.regex(r"admin_menu") & filters.create(lambda _, __, m: is_main_admin(m.from_user.id)))
 async def return_to_admin_menu(client, callback_query):
     await admin_menu(client, callback_query.message)
-    await callback_query.answer()
-
-@app.on_callback_query(filters.regex(r"select_main_button_user") & filters.private)
-async def return_to_main_button_menu(client, callback_query):
-    await show_main_button_menu(client, callback_query.message)
     await callback_query.answer()
 
 app.run()
